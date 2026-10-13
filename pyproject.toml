@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opm-cp"
+version = "0.1.0"
+description = "Non-negative CP decomposition of source-space MEG time-frequency power, with cross-subject component clustering"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "h5py>=3.8",
+    "torch>=2.0",
+    "tensorly>=0.8",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+# Glass-brain panels (section 7 of the example). Without these the ROI mode still
+# plots, as a bar panel instead of a brain.
+brain = ["nibabel>=5.0", "nilearn>=0.10"]
+# Exact (integer-programming) consensus clustering. highspy is the solver: the CBC
+# binary bundled with pulp is x86-only and fails on Apple Silicon.
+consensus = ["pulp>=2.7", "highspy>=1.5"]
+notebook = ["jupyterlab>=4.0", "ipykernel>=6.0"]
+all = ["opm-cp[brain,consensus,notebook]"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

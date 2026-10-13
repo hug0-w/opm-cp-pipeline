@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.ipynb_checkpoints/
+.DS_Store
+
+# Subject data and derived factors never belong in the repository.
+data/
+*.mat
+*.npz
+*.npy
+
+# The AAL2 atlas is not redistributed here — see atlas/README.md.
+atlas/*.nii
+atlas/*.nii.gz
+atlas/*.txt
+
+# Figure output
+figures/
+*.svg
+*.png
+*.pdf
