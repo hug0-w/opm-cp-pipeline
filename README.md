@@ -29,6 +29,10 @@ response does not occur at the same moment in two people.
 Built for OPM-MEG recordings parcellated with the AAL2 atlas, but nothing in it is
 specific to OPM: any signed region × frequency × time tensor will work.
 
+<img width="1392" height="1686" alt="image" src="https://github.com/user-attachments/assets/31177f7a-e2a2-498c-a4a9-3559a575f6e7" />
+
+
+
 ## Features
 
 - Non-negative CP (PARAFAC) decomposition with multiple restarts, so results do not hinge
