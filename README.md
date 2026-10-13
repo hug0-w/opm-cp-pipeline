@@ -1,124 +1,150 @@
-### *Note from author: Agentic AI was used to compile this git repository, however the original code used for complilation was produced by hand with assistance from AI only in selected coding tasks (e.g. code review and debugging).*
-# Source-space MEG CPD
+# opm-cp
 
-Data-driven discovery of event-related brain activity in source-space MEG, using
-non-negative tensor decomposition.
+**Data-driven discovery of event-related brain activity in source-space MEG, using non-negative tensor decomposition and cross-subject component clustering.**
 
-## About
+![Python](https://img.shields.io/badge/python-%E2%89%A53.10-blue)
+![Licence](https://img.shields.io/badge/licence-MIT-green)
 
-Analysing event-related changes in oscillatory power usually means committing to a
-frequency band and a time window before you look — averaging within them and testing
-across parcels. That works when you already know what you are looking for, but a real
-neural response is a *joint* pattern: particular brain regions, at particular frequencies,
-over a particular interval. Fixing two of those three in advance discards the structure
-that makes the response interesting.
+<img width="1392" height="1686" alt="Example output of the pipeline" src="https://github.com/user-attachments/assets/31177f7a-e2a2-498c-a4a9-3559a575f6e7" />
 
-This package takes the whole **region × frequency × time** array of baseline-normalised
-power and factorises it, recovering each dominant pattern as a single component with its
-own spatial map, spectral profile and time course. Nothing is specified in advance; the
-patterns come out of the data.
+## Why
 
-It then addresses the harder question that follows. Each subject is decomposed separately,
-so their components arrive in arbitrary order with no correspondence between them —
-knowing that a pattern is reproducible across a group means first working out which
-component in one subject corresponds to which in another. The package does that
-automatically, and is deliberately tolerant of the fact that the same physiological
-response does not occur at the same moment in two people.
+Analysing event-related oscillatory power usually means fixing a frequency band and a time window in advance, averaging within them, and testing across parcels. That only works if you already know what you are looking for. A real response is a *joint* pattern — specific regions, at specific frequencies, over a specific interval — and fixing two of those three throws away the structure.
 
-Built for OPM-MEG recordings parcellated with the AAL2 atlas, but nothing in it is
-specific to OPM: any signed region × frequency × time tensor will work.
+`opm-cp` factorises the full **region × frequency × time** tensor of baseline-normalised power. Each dominant pattern comes out as one component with its own spatial map, spectral profile and time course; nothing is specified in advance.
 
-<img width="1392" height="1686" alt="image" src="https://github.com/user-attachments/assets/31177f7a-e2a2-498c-a4a9-3559a575f6e7" />
+It then solves the problem that follows. Subjects are decomposed independently, so their components arrive in arbitrary order. `opm-cp` works out which component in one subject corresponds to which in another — tolerating the fact that the same response does not occur at the same latency in two people — and reports how stable each cross-subject grouping is.
 
+Built for OPM-MEG parcellated with AAL2, but nothing is OPM-specific: any signed region × frequency × time tensor works.
 
+## How it works
 
-## Features
+```mermaid
+flowchart LR
+    A["Load<br/>ln(power / baseline)<br/>ROI × Freq × Time"] --> B["Prepare<br/>ROI subset, edge crop,<br/>split ERS / ERD"]
+    B --> C["Decompose<br/>non-negative CP,<br/>best of N restarts"]
+    C --> D["Compare<br/>ROI · Freq · lagged-Time<br/>similarity"]
+    D --> E["Cluster<br/>exact, cannot-link,<br/>resampling stability"]
+```
 
-- Non-negative CP (PARAFAC) decomposition with multiple restarts, so results do not hinge
-  on one random initialisation
-- Principled model-order selection, based on component reproducibility rather than fit
-  alone
-- Separate treatment of power increases and decreases, which are distinct phenomena
-- Cross-subject component matching that tolerates inter-subject latency differences
-- Two clustering methods, including an exact formulation with a resampling-based stability
-  measure
-- Diagnostics that say *why* a cluster looks the way it does, not just what it contains
-- Publication-oriented figures at every stage: factor profiles, similarity matrices, glass
-  brains, connectograms, time-frequency maps
-- A simulator with known ground truth, so the method can be validated rather than trusted
+| Stage | Module | Key choice |
+|---|---|---|
+| Load | `io.py` | Reads MATLAB v7.3 HDF5; axes are transposed back and checked against the stored axis vectors |
+| Prepare | `tensors.py` | Power increases (ERS) and decreases (ERD) are split and decomposed separately; `ers - erd == data` exactly |
+| Decompose | `decomposition.py` | Best-of-N restarts; rank chosen by **stability** across restarts (Williams et al., 2018), not R² alone |
+| Compare | `similarity.py` | Score is the **product** of per-mode similarities, so a match must agree in space, frequency *and* time. The time term is the max normalised cross-correlation within ±`lag_ms` |
+| Cluster | `clustering.py` | Integer program with threshold, same-subject cannot-link and transitivity constraints; stability via consensus resampling (Monti et al., 2003) |
+
+The full rationale for each choice is in [`docs/pipeline.md`](docs/pipeline.md). Read it before interpreting results.
 
 ## Installation
 
 ```bash
-git clone <this repo> && cd opm-cp-pipeline
+git clone https://github.com/hug0-w/opm-cp-pipeline.git
+cd opm-cp-pipeline
 pip install -e ".[all]"
 ```
 
-The core install needs only numpy, scipy, h5py, torch, tensorly and matplotlib. Three
-optional extras — `brain` (glass brains), `consensus` (exact clustering) and `notebook` —
-are grouped under `all`; the pipeline degrades gracefully without any of them.
+Requires Python ≥ 3.10. The core install needs only numpy, scipy, h5py, torch, tensorly and matplotlib. Optional extras, all included in `all`:
 
-On Apple Silicon, install the `consensus` extra rather than pulp alone, so you get a
-solver that runs natively.
+| Extra | Adds | Without it |
+|---|---|---|
+| `brain` | nibabel, nilearn — glass-brain ROI panels | ROI loadings plot as bar panels |
+| `consensus` | pulp, highspy — exact clustering | only greedy `align_components` is available |
+| `notebook` | jupyterlab, ipykernel | — |
 
-The AAL2 atlas is not bundled, as it carries its own licence and citation requirement.
-See [`atlas/README.md`](atlas/README.md) if you want the glass-brain figures.
+**Apple Silicon:** install the `consensus` extra rather than pulp alone. pulp's bundled CBC solver is x86-only; the extra pulls in `highspy`, which runs natively.
 
-## Getting started
+**Atlas:** AAL2 is not bundled (it has its own licence and citation requirement). It is only needed for glass-brain figures — see [`atlas/README.md`](atlas/README.md).
 
-[`examples/ers_erd_cross_subject_clustering.ipynb`](examples/ers_erd_cross_subject_clustering.ipynb)
-runs the whole pipeline end to end and is the place to start. It uses simulated data with
-known ground truth, so it works from a fresh clone with no recordings of your own, and its
-final section checks what the method recovered against what actually went in. One clearly
-marked cell is all you change to point it at your own data.
+## Quick start
+
+The worked notebook, [`examples/ers_erd_cross_subject_clustering.ipynb`](examples/ers_erd_cross_subject_clustering.ipynb), runs the whole pipeline on simulated data with known ground truth, so it works from a fresh clone. Its last section checks what was recovered against what went in. To use your own recordings, change the one marked cell.
+
+The core of it:
 
 ```python
 import opm_cp as cp
-from opm_cp import plotting as vz, simulate
+from opm_cp import simulate
 
-# Load and prepare (swap simulate_dataset for cp.load_tensor on real data)
+# Load and prepare (on real data: cp.load_tensor instead of simulate_dataset)
 loaded = simulate.simulate_dataset(subjects=(1, 2, 3))
 ds = cp.build_dataset(loaded, keep_patterns=['precentral', 'occipital'], n_crop=5)
 
-# Decompose each subject independently
+# Decompose each subject independently, ERS and ERD separately
 cp_models, factors = cp.decompose_dataset(ds, rank=3, n_runs=25)
 
-# Match components across subjects, then group them
-components = cp.build_component_set(factors['ERD'], subjects=ds.subjects, rank=3)
-sim = cp.compute_similarity(components, dt_ms=ds.dt_ms, lag_ms=150)
-M, clusters, stability = cp.consensus_clustering(sim, threshold=0.5)
+# Match components across subjects and cluster them, once per type
+for kind in ('ERS', 'ERD'):
+    components = cp.build_component_set(factors[kind], subjects=ds.subjects, rank=3)
+    sim = cp.compute_similarity(components, dt_ms=ds.dt_ms, lag_ms=150)
+    M, clusters, stability = cp.consensus_clustering(sim, threshold=0.5)
 ```
+
+### Reading the output
+
+- **`clusters`** — labels 1..K; **0 means unassigned**. A component left unassigned is a result (that subject does not express a shared pattern), not a failure.
+- **`stability`** — `m(k)`, mean within-cluster consensus. Near 1 means the grouping is driven by the data; lower values mean it rests on near-ties. This is the number to report.
+- **`M`** — the consensus matrix: how often each pair clustered together across resamples.
+- **`cluster_quality`** prints per-mode diagnostics and flags forced matches (weak ROI score with strong frequency/time scores) and subjects whose best-matching component sits outside the cluster.
+
+### Parameters that matter
+
+| Parameter | What it controls | Guidance |
+|---|---|---|
+| `rank` | components per subject | Choose with `rank_selection` + `plotting.plot_rank_selection`: largest rank that is still stable *and* explains useful variance |
+| `n_runs` | restarts per fit | The objective is non-convex; too few and a component may reflect one bad initialisation |
+| `lag_ms` | tolerated inter-subject latency shift | Wide enough to absorb real jitter, no wider — at large values unrelated transients start matching. Default 100 ms |
+| `threshold` | minimum similarity for two components to be linked | Higher is stricter; more components stay unassigned |
+| `keep_patterns` | ROI subset (case-insensitive substrings of AAL2 names) | Exclude regions the sensor array covers poorly, e.g. cerebellum |
+| `n_crop` | time points dropped from each end | Removes taper edge artefacts, which otherwise attract their own component |
+
+## Figures
+
+ERS is always red and ERD blue, so any figure is identifiable out of context.
+
+| Function | Shows | Use it to |
+|---|---|---|
+| `plot_tfr_roi` | raw time-frequency maps | check components against the undecomposed data, before and after |
+| `plot_rank_selection` | R² and stability vs rank | choose the model order |
+| `plot_connectogram_grid` | all pairwise similarities, per mode | see which mode carries cross-subject structure before clustering |
+| `plot_cluster` | every member of a cluster separately | **judge** a cluster |
+| `plot_cluster_mean` | lag-aligned consensus profile with min–max band | **present** a cluster |
 
 ## Project structure
 
 ```
 src/opm_cp/
-  io.py             reading time-frequency files and the atlas
-  tensors.py        preparing the tensors to be decomposed
-  decomposition.py  fitting CP models and choosing a model order
-  similarity.py     comparing components across subjects
-  clustering.py     grouping matching components
+  io.py             read time-frequency files and the atlas
+  tensors.py        ROI selection, cropping, ERS/ERD split
+  decomposition.py  non-negative CP fits and rank selection
+  similarity.py     cross-subject component similarity
+  clustering.py     greedy alignment and exact consensus clustering
   plotting.py       figures for every stage
   simulate.py       synthetic data with known ground truth
-docs/pipeline.md    how the method works, and why
-examples/           a single worked run, end to end
+docs/pipeline.md    the method, stage by stage, and why
+examples/           end-to-end worked run
+atlas/              instructions for obtaining AAL2
 ```
 
-## Documentation
+## Limitations
 
-**[`docs/pipeline.md`](docs/pipeline.md)** explains the method stage by stage: what each
-step does, which choices are substantive, and how to read the output. Worth reading before
-interpreting results. Every module and public function is also documented in place.
+- **Scaling.** Transitivity constraints make the exact clustering O(n³) in size: fine for the few tens of components a typical study produces, not for hundreds.
+- **Null distributions** must be built at the trial level (`pow_trials`). CP is invariant to permuting indices within a mode, so shifting the averaged tensor's time axis gives a degenerate null with p ≈ 1.
+- **One component per subject per cluster** is assumed by the cannot-link constraint.
+- **Input** is expected as MATLAB v7.3 HDF5 from an upstream time-frequency analysis. Other sources need a dict with the same keys `load_tensor` returns (`pow_norm`, `pow_banded`, `pow_trials`), which is what `simulate` produces.
 
 ## References
 
-The method draws on:
-
-- Williams et al. (2018), *Neuron* 98(6), 1099–1115 — tensor decomposition of neural data
-- Monti et al. (2003), *Machine Learning* 52, 91–118 — consensus clustering
-- Rolls et al. (2015), *NeuroImage* 122, 1–5 — the AAL2 atlas
-- Kossaifi et al. (2019), *JMLR* 20(26), 1–6 — TensorLy
+- Williams et al. (2018). Unsupervised discovery of demixed, low-dimensional neural dynamics across multiple timescales through tensor component analysis. *Neuron* 98(6), 1099–1115.
+- Monti et al. (2003). Consensus clustering: a resampling-based method for class discovery and visualization of gene expression microarray data. *Machine Learning* 52, 91–118.
+- Rolls et al. (2015). Implementation of a new parcellation of the orbitofrontal cortex in the automated anatomical labeling atlas. *NeuroImage* 122, 1–5.
+- Kossaifi et al. (2019). TensorLy: Tensor learning in Python. *JMLR* 20(26), 1–6.
 
 ## Licence
 
 MIT. The AAL2 atlas is not included and carries its own terms.
+
+---
+
+*A note on authorship: the code was written by hand, with AI assistance limited to specific tasks such as code review and debugging. Agentic AI was used to assemble it into this repository.*
