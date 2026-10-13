@@ -1,4 +1,4 @@
-### *Note from author: Agentic AI was used to compile this git repository, however the original code used in complilation was produced by Hugo Wharton with assistance from AI in selected coding tasks (e.g. code review and debugging).*
+### *Note from author: Agentic AI was used to compile this git repository, however the original code used for complilation was produced by hand with assistance from AI only in selected coding tasks (e.g. code review and debugging).*
 # Source-space MEG CPD
 
 Data-driven discovery of event-related brain activity in source-space MEG, using
